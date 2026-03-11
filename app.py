@@ -391,3 +391,4 @@ if __name__ == '__main__':
     finally:
         camera_manager.stop()
         print("服务器已停止")
+        
