@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-农业巡检智能服务应用 - 树莓派4B+ 后端
-适用于树莓派4B+ 4G，使用picamera2捕获USB相机
+农业巡检智能服务应用 - 树莓派 后端
+适用于树莓派，使用picamera2捕获USB相机
 """
 
-from flask import Flask, Response, jsonify, send_from_directory
+from dataclasses import dataclass
+
 import cv2
-import numpy as np
-from datetime import datetime
-import threading
 import time
-import json
+import hashlib  
+import threading
+import numpy as np
+from functools import wraps  
+from flask_cors import CORS  # 处理跨域问题
+from datetime import datetime
+from flask import Flask, Response, jsonify, send_from_directory, request  #  添加 request
 
 # 尝试导入picamera2，如果失败则使用cv2作为备用
 try:
@@ -22,13 +26,64 @@ except ImportError:
     USE_PICAMERA2 = False
 
 app = Flask(__name__, static_folder='static')
-
+CORS(app)  # 启用跨域资源共享
 # ==================== 全局变量 ====================
 current_frame = None
 frame_lock = threading.Lock()
 robot_position = {"x": 50, "y": 50}  # 机器人位置（百分比）
 camera = None
 
+# 鉴权配置（硬编码密钥的SHA1）
+AUTH_KEY_SHA1 = "15a563cd393fd764923d02a30de0c4337cf2fc03"
+
+# 鉴权装饰器
+def require_auth(f):
+    """鉴权装饰器：验证请求头中的 Authorization 字段"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        auth_header = request.headers.get("Authorization")
+        
+        # 校验格式: "Bearer <token>", 兼容主流 OAuth 2.0 和 RFC 6750 官方定义的认证方案格式
+        if not auth_header or not auth_header.startswith("Bearer "):
+            return jsonify({"error": "Missing or invalid authorization header"}), 401
+        
+        token = auth_header.split(" ", 1)[1]
+        
+        # 校验Token是否为密钥的SHA1
+        if hashlib.sha1(token.encode('utf-8')).hexdigest() != AUTH_KEY_SHA1:
+            return jsonify({"error": "Invalid credentials"}), 403
+            
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+# ==================== 数据管理 ====================
+@dataclass
+class DeviceStatus:
+    """设备状态数据类"""
+    cpu_usage: int
+    memory_usage: int
+    power_level: int
+    signal_strength: int
+    chart_data: list
+    risk_level: int
+    alert_count: int
+    trend_stat: int
+    cpu_temperature: float
+    current_cmd: str = "idle"
+    # start_inspection, stop_inspection, capture_image
+        
+dev_info = DeviceStatus(
+    cpu_usage=45,
+    memory_usage=62,
+    power_level=100,
+    signal_strength=97,
+    chart_data=[60, 45, 75, 30, 55, 40],
+    risk_level=5,
+    alert_count=0,
+    trend_stat=200,
+    cpu_temperature=55.3
+)
 # ==================== 摄像头管理 ====================
 class CameraManager:
     """摄像头管理类"""
@@ -267,6 +322,31 @@ def control_robot():
             "message": str(e)
         }), 500
 
+# 设备控制命令接口（需要鉴权）
+@app.route('/api/device/cmd', methods=['POST'])
+@require_auth
+def device_cmd():
+    """设备控制命令接口 - 需要鉴权"""
+    try:
+        data = request.get_json() or {}
+        cmd = data.get('cmd') # start_inspection, stop_inspection, capture_image
+        params = data.get('params', {})
+        global dev_info
+        dev_info.current_cmd = cmd
+        # TODO:这里添加具体的设备控制逻辑
+        # 示例：根据命令执行不同操作
+        if cmd == "start_inspection":
+            return jsonify({"success": True, "message": "开始巡检", "cmd": cmd})
+        elif cmd == "stop_inspection":
+            return jsonify({"success": True, "message": "停止巡检", "cmd": cmd})
+        elif cmd == "capture_image":
+            return jsonify({"success": True, "message": "已捕获图像", "cmd": cmd})
+        else:
+            return jsonify({"success": False, "message": f"未知命令: {cmd}"}), 400
+            
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
 @app.route('/api/stats/core')
 def get_core_stats():
     """获取核心功能统计"""
@@ -391,4 +471,3 @@ if __name__ == '__main__':
     finally:
         camera_manager.stop()
         print("服务器已停止")
-        
