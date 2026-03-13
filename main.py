@@ -9,18 +9,13 @@ from GPIO_Utilities import UltrasonicRadar, FanController
 # 巡检参数配置区 (方便调试)
 # ============================================================
 # 速度参数
-NORMAL_SPEED = 200      # 正常行驶速度 (mm/s) 建议值
+NORMAL_SPEED = 250      # 正常行驶速度 (mm/s) 建议值
 MAX_SPEED = 550         # 极速 (mm/s) 履带底盘上限
 ROTATE_SPEED = 0.8      # 旋转角速度 (rad/s), 约45.8度/秒
 
 # 时间参数 (单位：秒)
-TIME_STRAIGHT_A = 3.0   # [A] 往返直行单次时间
+TIME_STRAIGHT_A = 6.3   # [A] 往返直行单次时间
 TIME_WAIT_B = 2.0       # [B] 回到原点后的等待时间
-TIME_STRAIGHT_C = 5.0   # [C] 避障前的直行时间
-TIME_STRAIGHT_D = 2.0   # [D] 避障绕行时的斜向直行时间
-TIME_STRAIGHT_E = 3.0   # [E] 避障完成后的直行时间
-
-# 避障参数
 AVOID_ANGLE = math.pi / 4  # 避障转向角度 45度
 
 # 其他配置
@@ -61,8 +56,8 @@ def robot_inspection():
         
         # 1.2 原地调头 180度 (pi rad)
         print("  [-] 原地左转调头 180度")
-        turn_time = math.pi / ROTATE_SPEED  # 时间 = 角度/角速度
-        robot.rotate_left(speed=ROTATE_SPEED)
+        turn_time = math.pi / ROTATE_SPEED + 0.17 # 时间 = 角度/角速度 + 修正值
+        robot.rotate_left(speed=ROTATE_SPEED) 
         time.sleep(turn_time)
         robot.stop()
         time.sleep(0.3)
@@ -70,7 +65,7 @@ def robot_inspection():
         # 1.3 再次直行 时间A (方向相反，实际返回原点)
         print("  [-] 向前直行 {}s (返回原点)".format(TIME_STRAIGHT_A))
         robot.move_forward(speed=NORMAL_SPEED)
-        time.sleep(TIME_STRAIGHT_A)
+        time.sleep(TIME_STRAIGHT_A - 0.4)
         robot.stop()
         time.sleep(0.3)
         
@@ -81,19 +76,20 @@ def robot_inspection():
         robot.stop()
         time.sleep(0.5)
         
-        print("  [-] 倒车测试")
+        # 1.5 再次调头 180度 (恢复原始朝向)
+        print("  [-] 倒车")
         robot.move_backward(speed=NORMAL_SPEED/2)
         radar = UltrasonicRadar()
-        radar_thread = Thread(target=radar.run, kwargs={'duration': 20})
+        radar_thread = Thread(target=radar.run, kwargs={'duration': 4})
         radar_thread.start()
-        for _ in range(20):
+        for _ in range(4):
             dist = radar.get_distance()
             if dist is not None:
                 print(f"  -> 当前距离：{dist:.2f} cm")
-                if dist < 10:
+                if dist < 15:
                     print("  -> 距离过近，停止倒车")
                     robot.stop()
-                elif dist < 20:
+                elif dist < 25:
                     print("  -> 距离较近，减速")
                     factor = (dist - 10) / 10.0  # 10-20cm线性减速
                     speed = max(NORMAL_SPEED/5, NORMAL_SPEED/2 * factor)  # 最低减速到1/5速度
@@ -101,9 +97,15 @@ def robot_inspection():
             else:
                 print("  -> 等待数据...")
             time.sleep(1)
-        
-        # TODO:
-        
+        robot.stop()
+        time.sleep(0.3)
+
+        # 1.6 调整方向 (恢复原始朝向)
+        print("  [-] (恢复朝向)")
+        robot.rotate_right(speed=ROTATE_SPEED + 0.2)
+        time.sleep(0.3)
+        robot.stop()
+        time.sleep(0.2)
         
         # ========================================================
         # 阶段2: 定点等待
@@ -112,69 +114,28 @@ def robot_inspection():
         _wait_with_status(TIME_WAIT_B)
         
         # ========================================================
-        # 阶段3: 避障前直行
+        # 阶段3: 直行
         # ========================================================
-        print("\n[Phase 3] 避障前直行 {}s".format(TIME_STRAIGHT_C))
+        # 2.1 向前直行 时间A
+        print("  [-] 向前直行 {}s @ {}mm/s".format(TIME_STRAIGHT_A, NORMAL_SPEED))
         robot.move_forward(speed=NORMAL_SPEED)
-        time.sleep(TIME_STRAIGHT_C)
+        time.sleep(TIME_STRAIGHT_A - 0.5)
         robot.stop()
-        time.sleep(0.3)
+        time.sleep(0.3)  # 缓冲时间，确保完全停止
         
         # ========================================================
-        # 阶段4: 模拟避障流程 (履带底盘特殊处理)
-        # ========================================================
-        print("\n[Phase 4] 执行避障流程 (履带模式)")
-        print("  [Note] 履带底盘不支持横向平移，采用'转向+直行'模拟斜向避障")
-        
-        # 4.1 向左转45度 (准备向左前方行驶)
-        print("  [-] 左转 {:.0f}度 准备避障".format(math.degrees(AVOID_ANGLE)))
-        robot.rotate_left(speed=ROTATE_SPEED)
-        time.sleep(AVOID_ANGLE / ROTATE_SPEED)
-        robot.stop()
-        time.sleep(0.2)
-        
-        # 4.2 向左前方直行 时间D
-        print("  [-] 向左前方直行 {}s".format(TIME_STRAIGHT_D))
-        robot.move_forward(speed=NORMAL_SPEED)
-        time.sleep(TIME_STRAIGHT_D)
-        robot.stop()
-        time.sleep(0.2)
-        
-        # 4.3 向右转45度 (回到原行驶方向)
-        print("  [-] 右转 {:.0f}度 回到原路线".format(math.degrees(AVOID_ANGLE)))
-        robot.rotate_right(speed=ROTATE_SPEED)
-        time.sleep(AVOID_ANGLE / ROTATE_SPEED)
-        robot.stop()
-        time.sleep(0.3)
-        
-        # 4.4 [可选] 补偿直行: 确保完全回到原路线
-        # 由于履带转向存在滑移误差，可根据实际测试添加微小补偿
-        # robot.move_forward(speed=50)
-        # time.sleep(0.5)
-        # robot.stop()
-        
-        # ========================================================
-        # 阶段5: 避障后直行
-        # ========================================================
-        print("\n[Phase 5] 避障后直行 {}s".format(TIME_STRAIGHT_E))
-        robot.move_forward(speed=NORMAL_SPEED)
-        time.sleep(TIME_STRAIGHT_E)
-        robot.stop()
-        time.sleep(0.3)
-        
-        # ========================================================
-        # 阶段6: 结束动作
+        # 阶段3: 结束动作
         # ========================================================
         print("\n[Phase 6] 任务收尾")
         
-        # 6.1 向右侧45度转向
+        # 3.1 向右侧转向
         print("  [-] 右转 {:.0f}度 结束姿态".format(math.degrees(AVOID_ANGLE)))
-        robot.rotate_right(speed=ROTATE_SPEED)
-        time.sleep(AVOID_ANGLE / ROTATE_SPEED)
+        robot.rotate_right(speed=ROTATE_SPEED + 0.1)
+        time.sleep(AVOID_ANGLE / ROTATE_SPEED + 0.55)
         robot.stop()
-        time.sleep(0.3)
+        time.sleep(0.8)
         
-        # 6.2 打印完成信息
+        # 3.2 打印完成信息
         status = robot.get_status()
         print("\n" + "=" * 60)
         print("[Success] 巡检任务圆满完成")
@@ -184,7 +145,7 @@ def robot_inspection():
         print("    - 行驶速度: {}mm/s (设定值)".format(NORMAL_SPEED))
         print("=" * 60 + "\n")
         
-        # 6.3 播放提示音
+        # 3.3 播放提示音
         play_notice_audio()
         
         print("[Inspection] 任务流程执行完毕")
