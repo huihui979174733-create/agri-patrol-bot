@@ -3,7 +3,7 @@ import math
 import time
 from threading import Thread
 from robot import WheeltecRobot
-from app import app, camera_manager, dev_info
+from app import app, camera_manager, dev_info, pest_alert
 from GPIO_Utilities import UltrasonicRadar, FanController
 # ============================================================
 # 巡检参数配置区 (方便调试)
@@ -193,6 +193,10 @@ def play_notice_audio():
         # &: 后台运行，不阻塞主程序
         cmd = "mpv --no-video --really-quiet '{}' &".format(NOTICE_AUDIO)
         os.system(cmd)
+        # ===================== 新增-修改 =====================
+        global pest_alert
+        pest_alert = True
+        # ====================================================
         
     except Exception as e:
         print("[Error] 音频播放异常：{}: {}".format(type(e).__name__, e))

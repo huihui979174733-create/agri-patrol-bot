@@ -32,7 +32,9 @@ current_frame = None
 frame_lock = threading.Lock()
 robot_position = {"x": 50, "y": 50}  # 机器人位置（百分比）
 camera = None
-
+# 新增——病虫害告警全局标志
+pest_alert = False
+__all__ = ['app', 'camera_manager', 'dev_info', 'pest_alert']
 # 鉴权配置（硬编码密钥的SHA1）
 AUTH_KEY_SHA1 = "15a563cd393fd764923d02a30de0c4337cf2fc03"
 
@@ -390,6 +392,17 @@ def get_bottom_solutions():
         {"icon": "🌱", "title": "作物健康度", "value": "92%"},
         {"icon": "🎯", "title": "巡检进度", "value": "68%"}
     ])
+# ==================== 新增——病虫害告警接口 ====================
+@app.route('/api/alert_status')
+def alert_status():
+    """前端轮询查询是否有病虫害告警"""
+    global pest_alert
+    alert = pest_alert
+    # 读取一次就清空，保证只提示一次
+    pest_alert = False
+    return jsonify({
+        "alert": alert
+    })
 
 # ==================== 系统信息获取函数 ====================
 

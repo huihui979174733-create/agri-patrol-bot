@@ -858,6 +858,26 @@
             </div>
         </div>
     </div>
+    <!-- 新增：病虫害告警大字 -->
+    <div id="pest_warning" style="
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        font-size: 25px;
+        font-weight: bold;
+        color: #ff3333;
+        text-shadow: 0 0 30px #ff0000;
+        z-index: 9999;
+        display: none;
+    ">
+        检测到病虫害。
+        识别结果：蔬菜感染蛞蝓，喜阴暗潮湿，大棚春秋高发，危害多种蔬菜。
+        应急措施：诱杀、设防虫网，撒草木灰，虫量高时喷白僵菌，清理病株。
+        长期预防：控湿通风，轮作葱蒜，定期撒灰巡查。
+        成本参考：每亩155-250元，绿色低耗。
+        核心：控湿+诱杀。
+    </div>
 
     <script>
         // API基础URL
@@ -1316,6 +1336,18 @@
             
             // 定期更新数据
             setInterval(fetchAllData, 5000); // 每5秒更新一次数据
+            // ================== 病虫害告警轮询 ==================
+            setInterval(async () => {
+              try {
+                let res = await fetch("/api/alert_status");
+                let data = await res.json();
+                let dom = document.getElementById("pest_warning");
+                dom.style.display = data.alert ? "block" : "none";  
+              } catch (err) {
+                 // 接口异常不影响页面
+              }
+            }, 1000);
+            // ====================================================
         }
         
         // 页面加载完成后初始化
